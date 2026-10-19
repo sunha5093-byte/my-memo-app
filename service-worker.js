@@ -1,11 +1,11 @@
 'use strict';
 // Change the version whenever the app shell changes.
 const CACHE_PREFIX = 'my-notepad-pwa-';
-const CACHE_NAME = CACHE_PREFIX + 'v1';
+const CACHE_NAME = CACHE_PREFIX + 'v2';
 const APP_FILES = [
   './index.html', './pwa.js', './manifest.json',
-  './icons/icon-180.png', './icons/icon-192.png',
-  './icons/icon-512.png', './icons/icon-maskable-512.png'
+  './icon-180.png', './icon-192.png',
+  './icon-512.png', './icon-maskable-512.png'
 ];
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(APP_FILES)));
@@ -38,3 +38,4 @@ self.addEventListener('fetch', event => {
     return (await cache.match(event.request)) || fetch(event.request);
   })());
 });
+
