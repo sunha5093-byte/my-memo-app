@@ -1,0 +1,17 @@
+{
+  "id": "./",
+  "name": "나의 메모장",
+  "short_name": "나의 메모장",
+  "description": "메모와 실행 일정을 저장하고 검색하는 나만의 메모장",
+  "lang": "ko",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#e6f2ff",
+  "theme_color": "#102a56",
+  "icons": [
+    { "src": "./icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "./icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "./icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

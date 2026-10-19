@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>나의 메모장</title>
+  <meta name="theme-color" content="#102a56">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="나의 메모장">
+  <link rel="manifest" href="./manifest.json">
+  <link rel="apple-touch-icon" href="./icons/icon-180.png">
+  <script src="./pwa.js" defer></script>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; padding: 48px 20px; background: #e6f2ff; color: #102a56; font-family: "맑은 고딕", "Malgun Gothic", sans-serif; }
+    main { max-width: 880px; margin: auto; padding: clamp(24px, 5vw, 48px); background: white; border-radius: 24px; box-shadow: 0 12px 40px #102a5610; }
+    h1 { margin: 0 0 12px; font-size: clamp(36px, 6vw, 48px); letter-spacing: -.04em; }
+    p { font-size: 18px; line-height: 1.7; color: #526078; }
+    label { display: block; margin: 28px 0 12px; font-size: 22px; font-weight: bold; }
+    textarea { display: block; width: 100%; min-height: 340px; padding: 20px; resize: vertical; border: 2px solid #c9d9ed; border-radius: 12px; background: #fbfdff; color: #18243b; font: inherit; font-size: 22px; line-height: 1.8; }
+    .actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 20px; }
+    button { padding: 14px 24px; border: 1px solid #c9d9ed; border-radius: 10px; background: #edf4fd; color: #102a56; font: inherit; font-size: 20px; font-weight: bold; cursor: pointer; }
+    button:hover { filter: brightness(.95); }
+    .primary { background: #102a56; color: white; border-color: #102a56; }
+    .danger { margin-left: auto; color: #a12d35; background: #fff3f3; border-color: #efced1; }
+    :focus-visible { outline: 3px solid #377bd1; outline-offset: 4px; }
+    #status { min-height: 31px; margin-bottom: 0; }
+    .hint { margin-top: 8px; font-size: 16px; }
+    input { width: 100%; padding: 16px 20px; border: 2px solid #c9d9ed; border-radius: 12px; font: inherit; font-size: 22px; color: #18243b; }
+    section { margin-top: 40px; border-top: 1px solid #dce6f2; padding-top: 24px; }
+    h2 { font-size: 28px; }
+    #notes { list-style: none; padding: 0; }
+    .note { padding: 20px; margin-bottom: 16px; border: 1px solid #c9d9ed; border-radius: 12px; background: #fbfdff; }
+    .note h3 { margin: 0; font-size: 24px; overflow-wrap: anywhere; }
+    .note p { white-space: pre-wrap; overflow-wrap: anywhere; }
+    .schedule { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
+    @media (max-width: 480px) { body { padding: 20px 12px; } button { flex: 1 1 auto; } .danger { margin-left: 0; } }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>나의 메모장</h1>
+    <p>떠오른 생각과 오늘의 할 일을 편하게 적어보세요.</p>
+    <button type="button" id="install-app" hidden>앱 설치</button>
+    <p class="hint" id="install-help">휴대폰 브라우저 메뉴에서 ‘홈 화면에 추가’를 선택해 설치할 수 있습니다.</p>
+    <p class="hint" id="offline-status" role="status"></p>
+    <label for="title">메모 제목</label>
+    <input id="title" placeholder="제목을 입력하세요." maxlength="200">
+    <label for="memo">메모 내용</label>
+    <textarea id="memo" placeholder="여기에 메모를 입력하세요." aria-describedby="storage-hint"></textarea>
+    <div class="schedule">
+      <div><label for="scheduled-date">실행 예정일</label><input type="date" id="scheduled-date"></div>
+      <div><label for="scheduled-time">실행 시간</label><input type="time" id="scheduled-time"></div>
+    </div>
+    <div class="actions">
+      <button type="button" id="save" class="primary">저장</button>
+      <button type="button" id="new">새 메모</button>
+      <button type="button" id="clear" class="danger">전체 삭제</button>
+    </div>
+    <p id="status" role="status" aria-live="polite"></p>
+    <p class="hint" id="storage-hint">저장을 누르면 이 브라우저에 보관됩니다. 같은 브라우저에서 이 페이지를 다시 열면 자동으로 불러옵니다. 브라우저 데이터를 삭제하거나 시크릿 모드를 종료하면 메모가 지워질 수 있습니다.</p>
+    <section aria-labelledby="list-heading">
+      <h2 id="list-heading">저장한 메모 <span id="count"></span></h2>
+      <label for="search">메모 검색</label>
+      <input type="search" id="search" placeholder="제목이나 내용으로 검색하세요." aria-controls="notes" aria-describedby="search-summary">
+      <p id="search-summary" role="status" aria-live="polite"></p>
+      <p id="empty">아직 저장한 메모가 없습니다.</p>
+      <ul id="notes"></ul>
+    </section>
+  </main>
+  <script>
+    const storageKey = 'codex-notepad.notes.v2';
+    const legacyKey = 'codex-notepad.memo.v1';
+    const title = document.getElementById('title');
+    const memo = document.getElementById('memo');
+    const status = document.getElementById('status');
+    const search = document.getElementById('search');
+    const scheduledDate = document.getElementById('scheduled-date');
+    const scheduledTime = document.getElementById('scheduled-time');
+    let notes = [];
+    let selectedId = null;
+    function editorValues() { return { title: title.value, content: memo.value, scheduledDate: scheduledDate.value, scheduledTime: scheduledTime.value }; }
+    let baseline = editorValues();
+    let storageReady = false;
+    function show(message) { status.textContent = message; }
+    function dirty() { return JSON.stringify(editorValues()) !== JSON.stringify(baseline); }
+    function openNote(note) {
+      selectedId = note.id;
+      title.value = note.title;
+      memo.value = note.content;
+      scheduledDate.value = typeof note.scheduledDate === 'string' ? note.scheduledDate : '';
+      scheduledTime.value = typeof note.scheduledTime === 'string' ? note.scheduledTime : '';
+      baseline = editorValues();
+    }
+    function formatCreatedAt(value) {
+      if (typeof value !== 'string' || !Number.isFinite(Date.parse(value))) return '기록 없음 (기존 메모)';
+      return new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(value));
+    }
+    function formatSchedule(note) {
+      const date = typeof note.scheduledDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(note.scheduledDate) ? note.scheduledDate : '';
+      const time = typeof note.scheduledTime === 'string' && /^\d{2}:\d{2}$/.test(note.scheduledTime) ? note.scheduledTime : '';
+      if (!date && !time) return '미지정';
+      return `${date || '날짜 미지정'} ${time || '(시간 미지정)'}`;
+    }
+    function canLeave() { return !dirty() || confirm('저장하지 않은 내용을 버릴까요?'); }
+    function resetEditor() {
+      selectedId = null;
+      title.value = '';
+      memo.value = '';
+      scheduledDate.value = '';
+      scheduledTime.value = '';
+      baseline = editorValues();
+    }
+    function persist(next) {
+      if (!storageReady) { show('저장소를 읽지 못해 변경할 수 없습니다. 페이지를 다시 열어주세요.'); return false; }
+      try {
+        localStorage.setItem(storageKey, JSON.stringify(next));
+        notes = next;
+        render();
+        return true;
+      } catch (error) {
+        show('저장소를 변경하지 못했습니다. 저장 공간과 브라우저 설정을 확인해 주세요.');
+        return false;
+      }
+    }
+    function render() {
+      const list = document.getElementById('notes');
+      list.replaceChildren();
+      document.getElementById('count').textContent = `(${notes.length}개)`;
+      const normalizeSearch = text => text.replace(/\s+/g, '').toLocaleLowerCase();
+      const query = normalizeSearch(search.value);
+      const filtered = notes.filter(note => normalizeSearch(note.title).includes(query) || normalizeSearch(note.content).includes(query));
+      document.getElementById('search-summary').textContent = query ? `검색 결과 ${filtered.length}개 / 전체 ${notes.length}개` : '';
+      const empty = document.getElementById('empty');
+      empty.hidden = filtered.length > 0;
+      empty.textContent = notes.length === 0 ? '아직 저장한 메모가 없습니다.' : '검색 결과가 없습니다.';
+      filtered.forEach(note => {
+        const item = document.createElement('li');
+        item.className = 'note';
+        const heading = document.createElement('h3');
+        heading.textContent = note.title;
+        const preview = document.createElement('p');
+        preview.textContent = note.content.length > 100 ? note.content.slice(0, 100) + '…' : note.content;
+        const dates = document.createElement('p');
+        dates.textContent = `작성일시: ${formatCreatedAt(note.createdAt)}\n실행 예정일시: ${formatSchedule(note)}`;
+        const actions = document.createElement('div');
+        actions.className = 'actions';
+        const view = document.createElement('button');
+        view.type = 'button';
+        view.textContent = '보기';
+        view.setAttribute('aria-label', note.title + ' 보기');
+        view.addEventListener('click', () => {
+          if (!canLeave()) return;
+          openNote(note);
+          show('메모를 열었습니다. 수정 후 저장하면 이 메모에 반영됩니다.');
+          title.focus();
+        });
+        const edit = document.createElement('button');
+        edit.type = 'button';
+        edit.textContent = '수정';
+        edit.setAttribute('aria-label', note.title + ' 수정');
+        edit.addEventListener('click', () => {
+          if (!canLeave()) return;
+          openNote(note);
+          show('메모를 수정 중입니다. 저장하면 기존 메모가 변경됩니다.');
+          title.focus();
+          title.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        });
+        const remove = document.createElement('button');
+        remove.type = 'button';
+        remove.className = 'danger';
+        remove.textContent = '삭제';
+        remove.setAttribute('aria-label', note.title + ' 삭제');
+        remove.addEventListener('click', () => {
+          if (!confirm('이 메모를 삭제할까요?')) return;
+          if (selectedId === note.id && !canLeave()) return;
+          if (persist(notes.filter(entry => entry.id !== note.id))) {
+            if (selectedId === note.id) resetEditor();
+            show('메모를 삭제했습니다.');
+          }
+        });
+        actions.append(view, edit, remove);
+        item.append(heading, preview, dates, actions);
+        list.append(item);
+      });
+    }
+    search.addEventListener('input', render);
+    document.getElementById('save').addEventListener('click', () => {
+      if (!title.value.trim()) { show('메모 제목을 입력해 주세요.'); title.focus(); return; }
+      if (!memo.value.trim()) { show('메모 내용을 입력해 주세요.'); memo.focus(); return; }
+      if (!scheduledDate.validity.valid || !scheduledTime.validity.valid) { show('실행 예정일과 시간을 올바르게 입력해 주세요.'); return; }
+      const existing = notes.find(entry => entry.id === selectedId);
+      const note = {
+        ...existing,
+        id: selectedId || `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        title: title.value.trim(), content: memo.value,
+        createdAt: existing ? (existing.createdAt ?? null) : new Date().toISOString(),
+        scheduledDate: scheduledDate.value, scheduledTime: scheduledTime.value
+      };
+      const next = selectedId ? notes.map(entry => entry.id === selectedId ? note : entry) : [note, ...notes];
+      const wasEditing = selectedId !== null;
+      if (persist(next)) {
+        resetEditor();
+        show(wasEditing ? '기존 메모를 수정했습니다. 새 메모를 입력할 수 있습니다.' : '메모를 저장했습니다. 새 메모를 입력할 수 있습니다.');
+      }
+    });
+    document.getElementById('new').addEventListener('click', () => {
+      if (!canLeave()) return;
+      resetEditor();
+      show('새 메모를 입력하세요.');
+      title.focus();
+    });
+    document.getElementById('clear').addEventListener('click', () => {
+      if (!confirm('입력한 내용과 저장된 메모를 모두 삭제할까요?')) return;
+      if (persist([])) {
+        resetEditor();
+        show('메모를 모두 삭제했습니다.');
+      }
+    });
+    [title, memo, scheduledDate, scheduledTime].forEach(field => field.addEventListener('input', () => show(dirty() ? '변경한 내용을 보관하려면 저장을 눌러주세요.' : '저장된 내용과 같습니다.')));
+    window.addEventListener('beforeunload', (event) => {
+      if (dirty()) { event.preventDefault(); event.returnValue = ''; }
+    });
+    try {
+      const stored = localStorage.getItem(storageKey);
+      if (stored !== null) {
+        const parsed = JSON.parse(stored);
+        if (!Array.isArray(parsed) || !parsed.every(note => note && typeof note.id === 'string' && typeof note.title === 'string' && typeof note.content === 'string') || new Set(parsed.map(note => note.id)).size !== parsed.length) throw new Error('Invalid notes');
+        notes = parsed;
+      } else {
+        const legacy = localStorage.getItem(legacyKey);
+        if (legacy !== null) {
+          notes = [{ id: 'legacy-note', title: '기존 메모', content: legacy }];
+          localStorage.setItem(storageKey, JSON.stringify(notes));
+        }
+      }
+      storageReady = true;
+      show('저장한 메모를 목록에서 확인하세요.');
+    } catch (error) {
+      show('저장된 메모를 읽지 못했습니다. 브라우저 설정을 확인해 주세요. 기존 데이터는 유지됩니다.');
+    }
+    render();
+  </script>
+</body>
+</html>
